@@ -34,12 +34,12 @@ export default function Home() {
   const [confirmPasswordVal, setConfirmPasswordVal] = useState("");
 
   // Pestaña Activa
-  const [activeTab, setActiveTab] = useState("caja");
+  const [activeTab, setActiveTab] = useState("caja"); // 'menu', 'caja', 'cocina', 'config'
 
   // Datos
   const [platos, setPlatos] = useState([]);
   const [pedidos, setPedidos] = useState([]);
-  const [cart, setCart] = useState({});
+  const [cart, setCart] = useState({}); // { [platoId]: cantidad }
 
   // Estados de carga y errores
   const [loadingPlatos, setLoadingPlatos] = useState(false);
@@ -51,7 +51,7 @@ export default function Home() {
 
   // Inicialización del estado de autenticación y claves
   useEffect(() => {
-    setIsMounted(true); // Confirmamos que ya estamos en el navegador
+    setIsMounted(true); // Confirmamos que el componente montó en el navegador
     if (typeof window !== "undefined") {
       const auth = localStorage.getItem("jimena_auth") === "true";
       setIsAuthenticated(auth);
@@ -60,15 +60,6 @@ export default function Home() {
       setCurrentPassword(pwd);
     }
   }, []);
-
-  // INGENIERO: Retorno temprano. El servidor renderiza esto, y el navegador espera al useEffect.
-  if (!isMounted) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-950 text-white">
-        <p>Cargando sistema...</p>
-      </div>
-    );
-  }
 
   // Carga de Platos
   const fetchPlatos = async () => {
@@ -196,7 +187,7 @@ export default function Home() {
         setConfirmPasswordVal("");
         alert("Contraseña cambiada exitosamente.");
       } else {
-        alert("La contraseña no puede estar vacía.");
+        alert("La contraseña no puede ser vacía.");
       }
     } else {
       alert("Las contraseñas no coinciden.");
@@ -403,6 +394,15 @@ export default function Home() {
       fetchPedidos();
     }
   };
+
+  // INGENIERO: Retorno temprano SEGURO. Va después de todos los hooks (useEffect/useState).
+  if (!isMounted) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-950 text-white">
+        <p>Cargando sistema...</p>
+      </div>
+    );
+  }
 
   // Pantalla de Bloqueo / Contraseña
   if (!isAuthenticated) {
@@ -748,7 +748,7 @@ export default function Home() {
               )}
             </div>
 
-            {/* Panel del Carrito de Compras (Caja) */}
+            {/* Panel del carrito de Compras (Caja) */}
             <div className="lg:col-span-4 space-y-4">
               <div className="rounded-2xl border border-gray-800 bg-gray-900/50 p-4 shadow-xl flex flex-col min-h-[400px]">
                 <div className="flex items-center justify-between border-b border-gray-800 pb-3 mb-3">
