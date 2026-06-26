@@ -21,6 +21,9 @@ const DEFAULT_PLATOS = [
 ];
 
 export default function Home() {
+  // INGENIERO: Estado para evitar Hydration Mismatch en Vercel
+  const [isMounted, setIsMounted] = useState(false);
+
   // Autenticación
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
@@ -31,12 +34,12 @@ export default function Home() {
   const [confirmPasswordVal, setConfirmPasswordVal] = useState("");
 
   // Pestaña Activa
-  const [activeTab, setActiveTab] = useState("caja"); // 'menu', 'caja', 'cocina', 'config'
+  const [activeTab, setActiveTab] = useState("caja");
 
   // Datos
   const [platos, setPlatos] = useState([]);
   const [pedidos, setPedidos] = useState([]);
-  const [cart, setCart] = useState({}); // { [platoId]: cantidad }
+  const [cart, setCart] = useState({});
 
   // Estados de carga y errores
   const [loadingPlatos, setLoadingPlatos] = useState(false);
@@ -48,6 +51,7 @@ export default function Home() {
 
   // Inicialización del estado de autenticación y claves
   useEffect(() => {
+    setIsMounted(true); // Confirmamos que ya estamos en el navegador
     if (typeof window !== "undefined") {
       const auth = localStorage.getItem("jimena_auth") === "true";
       setIsAuthenticated(auth);
@@ -56,6 +60,15 @@ export default function Home() {
       setCurrentPassword(pwd);
     }
   }, []);
+
+  // INGENIERO: Retorno temprano. El servidor renderiza esto, y el navegador espera al useEffect.
+  if (!isMounted) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-950 text-white">
+        <p>Cargando sistema...</p>
+      </div>
+    );
+  }
 
   // Carga de Platos
   const fetchPlatos = async () => {
