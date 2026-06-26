@@ -42,6 +42,7 @@ export default function Home() {
   const [loadingPlatos, setLoadingPlatos] = useState(false);
   const [loadingPedidos, setLoadingPedidos] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successAnimation, setSuccessAnimation] = useState(false);
 
@@ -69,17 +70,11 @@ export default function Home() {
       if (error) throw error;
       setPlatos(data || []);
     } catch (err) {
-
       console.log("Código:", err.code);
-
       console.log("Mensaje:", err.message);
-
       console.log("Detalles:", err.details);
-
       console.log("Hint:", err.hint);
-
       console.log(err);
-
     } finally {
       setLoadingPlatos(false);
     }
@@ -137,10 +132,8 @@ export default function Home() {
           } else if (payload.eventType === "UPDATE") {
             const pedidoActualizado = payload.new;
             if (pedidoActualizado.estado === "Servido") {
-              // Si fue despachado, removerlo del KDS
               setPedidos((prev) => prev.filter((p) => p.id !== pedidoActualizado.id));
             } else {
-              // Si cambió de otra manera, actualizar en el KDS
               setPedidos((prev) =>
                 prev.map((p) => (p.id === pedidoActualizado.id ? pedidoActualizado : p))
               );
@@ -167,7 +160,6 @@ export default function Home() {
       localStorage.setItem("jimena_auth", "true");
     } else {
       setLoginError(true);
-      // Animación de sacudida
       setTimeout(() => setLoginError(false), 500);
     }
   };
@@ -215,11 +207,37 @@ export default function Home() {
     }
   };
 
+  // ✅ NUEVA FUNCIÓN: Resetear todos los pedidos de la jornada
+  const handleResetearJornada = async () => {
+    const confirmacion = window.confirm(
+      "¿Resetear jornada? Se eliminarán TODOS los pedidos registrados y el contador volverá a #1."
+    );
+    if (!confirmacion) return;
+
+    setResetting(true);
+    try {
+      const { error } = await supabase
+        .from("pedidos")
+        .delete()
+        .neq("id", 0); // Borra todas las filas (ningún id real es 0)
+
+      if (error) throw error;
+
+      setPedidos([]);
+      localStorage.removeItem("last_order_date");
+      alert("✅ Jornada reseteada. El próximo pedido será el #1.");
+    } catch (err) {
+      console.error("Error al resetear jornada:", err);
+      alert("Error al resetear: " + err.message);
+    } finally {
+      setResetting(false);
+    }
+  };
+
   // Actualizar disponibilidad de plato en Supabase (Toggle)
   const handleToggleDisponibilidad = async (platoId, currentVal) => {
     const newVal = !currentVal;
 
-    // Optimistic Update: Actualizamos en UI al instante
     setPlatos((prev) =>
       prev.map((p) => (p.id === platoId ? { ...p, disponible_hoy: newVal } : p))
     );
@@ -233,7 +251,6 @@ export default function Home() {
       if (error) throw error;
     } catch (err) {
       console.error("Error al actualizar plato:", err);
-      // Revertimos en caso de error
       setPlatos((prev) =>
         prev.map((p) => (p.id === platoId ? { ...p, disponible_hoy: currentVal } : p))
       );
@@ -276,13 +293,11 @@ export default function Home() {
     }
 
     try {
-      // 1. Calcular el número del pedido correlativo consultando el máximo número registrado hoy
       let proximoNumero = 1;
 
       const hoyInicio = new Date();
       hoyInicio.setHours(0, 0, 0, 0);
 
-      // Intentamos consultar orders creadas hoy en Supabase
       const { data: ultimosPedidos, error: errorCorrelativo } = await supabase
         .from("pedidos")
         .select("numero_pedido")
@@ -292,7 +307,6 @@ export default function Home() {
 
       if (errorCorrelativo) {
         console.warn("No se pudo obtener el correlativo con created_at, usando fallback.", errorCorrelativo);
-        // Fallback: intentar sin filtro de fecha, ordenando por ID descendiente
         const { data: ultimosPedidosFallback, error: errorFallback } = await supabase
           .from("pedidos")
           .select("numero_pedido, hora")
@@ -300,7 +314,6 @@ export default function Home() {
           .limit(1);
 
         if (!errorFallback && ultimosPedidosFallback && ultimosPedidosFallback.length > 0) {
-          // Si el día guardado en localStorage es hoy, incrementamos. Si no, iniciamos en 1
           const hoyStr = new Date().toLocaleDateString("es-ES");
           const ultFecha = localStorage.getItem("last_order_date");
           if (ultFecha === hoyStr) {
@@ -311,7 +324,6 @@ export default function Home() {
         proximoNumero = ultimosPedidos[0].numero_pedido + 1;
       }
 
-      // 2. Estructurar items en JSONB
       const itemsJSON = cartEntries.map(([platoId, qty]) => {
         const plato = platos.find((p) => p.id === parseInt(platoId) || p.id === platoId);
         return {
@@ -322,10 +334,8 @@ export default function Home() {
         };
       });
 
-      // Calcular Total
       const total = itemsJSON.reduce((sum, item) => sum + item.precio * item.cantidad, 0);
 
-      // Formatear hora (HH:MM)
       const ahora = new Date();
       const horaStr = ahora.toLocaleTimeString("es-ES", {
         hour: "2-digit",
@@ -333,11 +343,9 @@ export default function Home() {
         hour12: false,
       });
 
-      // 3. Registrar fecha y número de pedido en localStorage
       const hoyStr = ahora.toLocaleDateString("es-ES");
       localStorage.setItem("last_order_date", hoyStr);
 
-      // 4. Hacer Insert en Supabase
       const nuevoPedidoObj = {
         numero_pedido: proximoNumero,
         items: itemsJSON,
@@ -353,7 +361,6 @@ export default function Home() {
 
       if (insertError) throw insertError;
 
-      // 5. Animación de Éxito
       setSuccessAnimation(true);
       setCart({});
       setTimeout(() => {
@@ -368,7 +375,6 @@ export default function Home() {
 
   // Cocina: Despachar / Pedido Servido
   const handleDespacharPedido = async (pedidoId) => {
-    // Optimistic Update: remover inmediatamente de la vista local
     setPedidos((prev) => prev.filter((p) => p.id !== pedidoId));
 
     try {
@@ -381,7 +387,6 @@ export default function Home() {
     } catch (err) {
       console.error("Error al despachar pedido:", err);
       alert("No se pudo despachar el pedido en el servidor. Intente de nuevo.");
-      // Recargar pedidos para sincronizar
       fetchPedidos();
     }
   };
@@ -458,7 +463,6 @@ export default function Home() {
               </p>
             )}
 
-            {/* Simulación del Cambio de Clave en la pantalla de bloqueo */}
             <div className="pt-2 text-center">
               <button
                 type="button"
@@ -500,10 +504,9 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => {
-                      // Restablecer a default
                       localStorage.setItem("jimena_password", DEFAULT_PASSWORD);
                       setCurrentPassword(DEFAULT_PASSWORD);
-                      alert("Clave restablecida a Jimena2026");
+                      alert("Clave restablecida a " + DEFAULT_PASSWORD);
                     }}
                     className="w-full rounded-lg bg-gray-800 py-2 text-xs font-bold text-gray-300 active:scale-95"
                   >
@@ -698,7 +701,6 @@ export default function Home() {
                           onClick={() => addToCart(plato.id)}
                           className="group relative flex flex-col overflow-hidden rounded-2xl border border-gray-800 bg-gray-900/40 text-left transition-all hover:border-emerald-500/50 active:scale-95 focus:outline-none"
                         >
-                          {/* Cantidad seleccionada flotando */}
                           {qtyInCart > 0 && (
                             <span className="absolute top-2 right-2 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500 text-lg font-black text-white shadow-lg ring-4 ring-gray-950 animate-bounce">
                               {qtyInCart}
@@ -856,7 +858,6 @@ export default function Home() {
                     key={pedido.id}
                     className="flex flex-col justify-between rounded-2xl border border-gray-800 bg-gray-900/70 shadow-2xl overflow-hidden hover:border-gray-700 transition-all"
                   >
-                    {/* Cabecera del Pedido */}
                     <div className="flex items-center justify-between bg-gray-900 p-4 border-b border-gray-850">
                       <div>
                         <span className="text-2xl font-black tracking-wider text-emerald-400">
@@ -873,7 +874,6 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Detalle de los Items (Tipografía Grande) */}
                     <div className="flex-1 p-5 space-y-3 bg-gray-950/40">
                       {pedido.items &&
                         pedido.items.map((item, idx) => (
@@ -891,7 +891,6 @@ export default function Home() {
                         ))}
                     </div>
 
-                    {/* Footer y Botón Gigante de Despachar */}
                     <div className="p-4 bg-gray-900 border-t border-gray-850 flex flex-col gap-3">
                       <div className="flex items-center justify-between text-xs text-gray-400 font-semibold px-1">
                         <span>Total Comanda:</span>
@@ -991,12 +990,29 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* ✅ NUEVA SECCIÓN: Resetear Jornada */}
+              <div className="rounded-2xl border border-red-900/40 bg-red-950/10 p-5 space-y-4">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  🔁 Resetear Jornada
+                </h3>
+                <p className="text-xs text-gray-400">
+                  Elimina <span className="text-red-400 font-semibold">todos los pedidos</span> registrados en la base de datos y reinicia el contador al #1. Úsalo al iniciar un nuevo turno o jornada.
+                </p>
+                <button
+                  onClick={handleResetearJornada}
+                  disabled={resetting}
+                  className="rounded-lg bg-red-700 px-4 py-2.5 text-xs font-bold text-white active:scale-95 hover:bg-red-600 disabled:opacity-50 transition-all"
+                >
+                  {resetting ? "Reseteando..." : "🗑️ Resetear Jornada (borrar todos los pedidos)"}
+                </button>
+              </div>
+
               {/* Info y Estado de Conexión */}
               <div className="rounded-2xl border border-gray-800 bg-gray-900/30 p-5 space-y-2">
                 <h3 className="text-sm font-bold text-gray-300">Detalles de Conexión</h3>
                 <div className="space-y-1 font-mono text-[11px] text-gray-400 bg-gray-950 p-3 rounded-lg border border-gray-900">
-                  <div>URL: {SUPABASE_URL}</div>
-                  <div>Anon Key: {SUPABASE_ANON_KEY.substring(0, 15)}...</div>
+                  <div>URL: {NEXT_PUBLIC_SUPABASE_URL}</div>
+                  <div>Anon Key: {NEXT_PUBLIC_SUPABASE_ANON_KEY.substring(0, 15)}...</div>
                   <div className="flex items-center gap-1.5 mt-2">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block animate-ping"></span>
                     <span className="text-emerald-400 font-bold">Cliente Supabase Inicializado</span>
